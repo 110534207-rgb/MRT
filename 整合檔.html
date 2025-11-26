@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>台北捷運全線互動路線圖（分頁版）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        margin: 0;
+        background-color: #f0f2f5;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+    }
+    .tabs {
+        display: flex;
+        justify-content: center;
+        overflow-x: auto;
+        background: #333;
+        padding: 10px 0;
+        white-space: nowrap;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .tab {
+        padding: 14px 24px;
+        cursor: pointer;
+        color: white;
+        font-weight: bold;
+        font-size: 15px;
+        min-width: 130px;
+        text-align: center;
+        border-radius: 8px 8px 0 0;
+        transition: all 0.3s;
+    }
+    .tab:hover { opacity: 0.9; }
+    .tab.active { transform: translateY(4px); box-shadow: 0 -4px 10px rgba(0,0,0,0.3); }
+    .tab.orange { background: #f8b61c; color: #333; }
+    .tab.red    { background: #e41c1c; }
+    .tab.brown  { background: #8B4513; }
+    .tab.green  { background: #008000; }
+    .tab.blue   { background: #007bff; }
+    .tab.yellow { background: #FFD700; color: #333; }
+
+    .content { flex: 1; display: flex; flex-direction: column; padding: 20px; overflow: hidden; }
+    h1 { margin: 0 0 20px; text-align: center; font-size: 28px; }
+
+    #map-container { display: flex; flex: 1; align-items: center; max-width: 1600px; margin: 0 auto; width: 95%; }
+    #map { width: 100%; overflow-x: auto; padding: 20px 0; }
+    .station-circle { cursor: pointer; fill: white; stroke-width: 4; transition: r 0.2s; }
+    .station-circle:hover { r: 12; }
+    .station-text { font-size: 12px; font-weight: bold; text-anchor: middle; pointer-events: none; }
+
+    #sidebar {
+        width: 320px; min-height: 500px; border: 2px solid; border-radius: 10px;
+        padding: 20px; margin-left: 20px; background: white;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column;
+    }
+    #info-panel-content { flex-grow: 1; overflow-y: auto; }
+    #info-panel h2, #info-panel p { text-align: center; margin: 0 0 10px; }
+    #info-panel ul { list-style: none; padding: 0; margin: 0; }
+    #info-panel li {
+        background: #e6f2ff; margin-bottom: 8px; padding: 10px;
+        border-radius: 5px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .delete-btn { background: #e41c1c; color: white; border: none; border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
+    #add-attraction-form { margin-top: 15px; display: flex; }
+    #add-attraction-input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    #add-attraction-btn { margin-left: 5px; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; color: white; }
+</style>
+</head>
+<body>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="content">
+    <h1 id="line-title">請選擇捷運線</h1>
+    <div id="map-container">
+        <div id="map"><svg id="line-svg" width="100%" height="150"></svg></div>
+        <div id="sidebar">
+            <div id="auth-section" style="text-align:center;margin-bottom:15px;">
+                <button id="login-btn">管理員登入</button>
+                <button id="logout-btn" style="display:none;background:#e41c1c;">登出</button>
+                <p id="admin-status" style="display:none;color:#e41c1c;font-weight:bold;">管理員模式</p>
+            </div>
+            <div id="info-panel">
+                <div id="info-panel-content">
+                    <h2>附近景點</h2>
+                    <p>請點選站點</p>
+                    <ul></ul>
+                </div>
+                <div id="add-attraction-form" style="display:none;">
+                    <input type="text" id="add-attraction-input" placeholder="輸入新景點...">
+                    <button id="add-attraction-btn">新增</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== 所有捷運線資料 ====================
+const lines = {
+    orangeHuilong: { // 中和新蘆線(迴龍)
+        name: "中和新蘆線（迴龍→南勢角）", color: "#f8b61c", storageKey: "orangeHuilongLineMapData",
+        stations: [
+            {id:"O21",name:"迴龍",attractions:[]},
+            {id:"O20",name:"丹鳳",attractions:[]},
+            {id:"O19",name:"輔大",attractions:["輔仁大學"]},
+            {id:"O18",name:"新莊",attractions:["新莊廟街"]},
+            {id:"O17",name:"頭前庄",attractions:["(可轉乘環狀線)"]},
+            {id:"O16",name:"先嗇宮",attractions:[]},
+            {id:"O15",name:"三重",attractions:["(可轉乘機場捷運)"]},
+            {id:"O14",name:"菜寮",attractions:[]},
+            {id:"O13",name:"台北橋",attractions:[]},
+            {id:"O12",name:"大橋頭",attractions:["迪化街","(往迴龍/蘆洲)"]},
+            {id:"O11",name:"民權西路",attractions:["(可轉乘淡水信義線)"]},
+            {id:"O10",name:"中山國小",attractions:[]},
+            {id:"O09",name:"行天宮",attractions:["行天宮"]},
+            {id:"O08",name:"松江南京",attractions:["(可轉乘松山新店線)"]},
+            {id:"O07",name:"忠孝新生",attractions:["華山1914","(可轉乘板南線)"]},
+            {id:"O06",name:"東門",attractions:["永康街","(可轉乘淡水信義線)"]},
+            {id:"O05",name:"古亭",attractions:["(可轉乘松山新店線)"]},
+            {id:"O04",name:"頂溪",attractions:["樂華夜市"]},
+            {id:"O03",name:"永安市場",attractions:["國立臺灣圖書館"]},
+            {id:"O02",name:"景安",attractions:["(可轉乘環狀線)"]},
+            {id:"O01",name:"南勢角",attractions:["興南夜市"]}
+        ]
+    },
+    orangeLuzhou: { // 中和新蘆線(蘆洲)
+        name: "中和新蘆線（蘆洲→南勢角）", color: "#f8b61c", storageKey: "orangeLuzhouLineMapData",
+        stations: [
+            {id:"O54",name:"蘆洲",attractions:["湧蓮寺"]},
+            {id:"O53",name:"三民高中",attractions:[]},
+            {id:"O52",name:"徐匯中學",attractions:[]},
+            {id:"O51",name:"三和國中",attractions:[]},
+            {id:"O50",name:"三重國小",attractions:[]},
+            {id:"O12",name:"大橋頭",attractions:["迪化街","(往迴龍/蘆洲)"]},
+            {id:"O11",name:"民權西路",attractions:["(可轉乘淡水信義線)"]},
+            {id:"O10",name:"中山國小",attractions:[]},
+            {id:"O09",name:"行天宮",attractions:["行天宮"]},
+            {id:"O08",name:"松江南京",attractions:["(可轉乘松山新店線)"]},
+            {id:"O07",name:"忠孝新生",attractions:["華山1914","(可轉乘板南線)"]},
+            {id:"O06",name:"東門",attractions:["永康街","(可轉乘淡水信義線)"]},
+            {id:"O05",name:"古亭",attractions:["(可轉乘松山新店線)"]},
+            {id:"O04",name:"頂溪",attractions:["樂華夜市"]},
+            {id:"O03",name:"永安市場",attractions:["國立臺灣圖書館"]},
+            {id:"O02",name:"景安",attractions:["(可轉乘環狀線)"]},
+            {id:"O01",name:"南勢角",attractions:["興南夜市"]}
+        ]
+    },
+    red: { // 淡水信義線
+        name: "淡水信義線", color: "#e41c1c", storageKey: "redLineMapData",
+        stations: [
+            {id:"R27",name:"象山",attractions:["象山親山步道"]},
+            {id:"R26",name:"台北101/世貿",attractions:["台北101","台北世貿中心"]},
+            {id:"R25",name:"信義安和",attractions:["通化夜市"]},
+            {id:"R24",name:"大安",attractions:["(可轉乘文湖線)"]},
+            {id:"R23",name:"大安森林公園",attractions:["大安森林公園"]},
+            {id:"R22",name:"東門",attractions:["永康街","(可轉乘中和新蘆線)"]},
+            {id:"R21",name:"中正紀念堂",attractions:["中正紀念堂","(可轉乘松山新店線)"]},
+            {id:"R20",name:"台大醫院",attractions:["二二八和平公園"]},
+            {id:"R19",name:"台北車站",attractions:["站前地下街","(可轉乘板南線)"]},
+            {id:"R18",name:"中山",attractions:["台北當代藝術館","(可轉乘松山新店線)"]},
+            {id:"R17",name:"雙連",attractions:["寧夏夜市"]},
+            {id:"R16",name:"民權西路",attractions:["(可轉乘中和新蘆線)"]},
+            {id:"R15",name:"圓山",attractions:["台北花博公園","台北故事館"]},
+            {id:"R14",name:"劍潭",attractions:["劍潭公園","台北孔廟"]},
+            {id:"R13",name:"士林",attractions:["士林夜市","國立故宮博物院"]},
+            {id:"R12",name:"芝山",attractions:["芝山文化生態綠園"]},
+            {id:"R11",name:"明德",attractions:["明德公園"]},
+            {id:"R10",name:"石牌",attractions:["石牌夜市"]},
+            {id:"R09",name:"奇岩",attractions:["奇岩公園"]},
+            {id:"R08",name:"北投",attractions:["北投溫泉","地熱谷"]},
+            {id:"R07",name:"復興崗",attractions:["台北藝術大學"]},
+            {id:"R06",name:"忠義",attractions:["陽明山國家公園"]},
+            {id:"R05",name:"關渡",attractions:["關渡宮","關渡自然公園"]},
+            {id:"R04",name:"竹圍",attractions:["竹圍漁港"]},
+            {id:"R03",name:"紅樹林",attractions:["紅樹林自然保留區"]},
+            {id:"R02",name:"淡水",attractions:["淡水老街","淡水漁人碼頭"]}
+        ]
+    },
+    brown: { // 文湖線
+        name: "文湖線", color: "#8B4513", storageKey: "brownLineMapData",
+        stations: [
+            {id:"BR24",name:"南港展覽館",attractions:["台北南港展覽館","(可轉乘板南線)"]},
+            {id:"BR23",name:"南港軟體園區",attractions:["南港軟體園區"]},
+            {id:"BR22",name:"東湖",attractions:["東湖公園"]},
+            {id:"BR21",name:"葫洲",attractions:["碧山巖"]},
+            {id:"BR20",name:"大湖公園",attractions:["大湖公園"]},
+            {id:"BR19",name:"內湖",attractions:["內湖花市"]},
+            {id:"BR18",name:"文德",attractions:["碧湖公園"]},
+            {id:"BR17",name:"港墘",attractions:["內湖科技園區"]},
+            {id:"BR16",name:"西湖",attractions:["內湖737夜市"]},
+            {id:"BR15",name:"劍南路",attractions:["內湖夜市"]},
+            {id:"BR14",name:"大直",attractions:["美麗華百樂園"]},
+            {id:"BR13",name:"松山機場",attractions:["松山機場觀景台"]},
+            {id:"BR12",name:"中山國中",attractions:["榮星花園"]},
+            {id:"BR11",name:"南京復興",attractions:["遼寧夜市","(可轉乘松山新店線)"]},
+            {id:"BR10",name:"忠孝復興",attractions:["SOGO百貨","(可轉乘板南線)"]},
+            {id:"BR09",name:"大安",attractions:["大安森林公園","(可轉乘淡水信義線)"]},
+            {id:"BR08",name:"科技大樓",attractions:["台北世貿中心"]},
+            {id:"BR07",name:"六張犁",attractions:["富陽自然生態公園"]},
+            {id:"BR06",name:"麟光",attractions:["富陽自然生態公園"]},
+            {id:"BR05",name:"辛亥",attractions:["辛亥生態公園"]},
+            {id:"BR04",name:"萬芳醫院",attractions:["萬芳醫院"]},
+            {id:"BR03",name:"萬芳社區",attractions:["萬芳公園"]},
+            {id:"BR02",name:"木柵",attractions:["貓空纜車"]},
+            {id:"BR01",name:"動物園",attractions:["台北市立動物園"]}
+        ]
+    },
+    green: { // 松山新店線
+        name: "松山新店線", color: "#008000", storageKey: "greenLineMapData",
+        stations: [
+            {id:"G19",name:"松山",attractions:["彩虹橋","錫口碼頭"]},
+            {id:"G18",name:"南京三民",attractions:["饒河夜市"]},
+            {id:"G17",name:"台北小巨蛋",attractions:["台北小巨蛋"]},
+            {id:"G16",name:"南京復興",attractions:["遼寧夜市","(可轉乘文湖線)"]},
+            {id:"G15",name:"松江南京",attractions:["(可轉乘中和新蘆線)"]},
+            {id:"G14",name:"中山",attractions:["台北當代藝術館","(可轉乘淡水信義線)"]},
+            {id:"G13",name:"北門",attractions:["北門廣場","台北郵局"]},
+            {id:"G12",name:"西門",attractions:["西門町","(可轉乘板南線)"]},
+            {id:"G11",name:"小南門",attractions:["台北植物園"]},
+            {id:"G10",name:"中正紀念堂",attractions:["中正紀念堂","(可轉乘淡水信義線)"]},
+            {id:"G09",name:"古亭",attractions:["(可轉乘中和新蘆線)"]},
+            {id:"G08",name:"台電大樓",attractions:["師大夜市"]},
+            {id:"G07",name:"公館",attractions:["台大校園","寶藏巖國際藝術村"]},
+            {id:"G06",name:"萬隆",attractions:["萬隆公園"]},
+            {id:"G05",name:"景美",attractions:["景美夜市"]},
+            {id:"G04",name:"大坪林",attractions:["(可轉乘環狀線)"]},
+            {id:"G03",name:"七張",attractions:["新店溪親水公園"]},
+            {id:"G02",name:"新店區公所",attractions:["陽光運動公園"]},
+            {id:"G01",name:"新店",attractions:["碧潭風景區"]}
+        ]
+    },
+    blue: { // 板南線
+        name: "板南線", color: "#007bff", storageKey: "singleLineMapData",
+        stations: [
+            {id:"BL23",name:"南港展覽館",attractions:["台北南港展覽館"]},
+            {id:"BL22",name:"南港",attractions:["南港車站CITYLINK"]},
+            {id:"BL21",name:"昆陽",attractions:["台北流行音樂中心"]},
+            {id:"BL20",name:"後山埤",attractions:["五分埔商圈"]},
+            {id:"BL19",name:"永春",attractions:["虎山親山步道"]},
+            {id:"BL18",name:"市政府",attractions:["台北101","信義商圈"]},
+            {id:"BL17",name:"國父紀念館",attractions:["國父紀念館","松山文創園區"]},
+            {id:"BL16",name:"忠孝敦化",attractions:["東區地下街","誠品敦南店"]},
+            {id:"BL15",name:"忠孝復興",attractions:["SOGO百貨","微風廣場"]},
+            {id:"BL14",name:"忠孝新生",attractions:["光華商場","三創生活園區"]},
+            {id:"BL13",name:"善導寺",attractions:["華山1914文創園區"]},
+            {id:"BL12",name:"台北車站",attractions:["站前地下街","國立臺灣博物館"]},
+            {id:"BL11",name:"西門",attractions:["西門町","紅樓劇場"]},
+            {id:"BL10",name:"龍山寺",attractions:["龍山寺","剝皮寮歷史街區"]},
+            {id:"BL09",name:"江子翠",attractions:["江子翠河濱公園"]},
+            {id:"BL08",name:"新埔",attractions:["新埔花市"]},
+            {id:"BL07",name:"板橋",attractions:["新北耶誕城","板橋大遠百"]},
+            {id:"BL06",name:"府中",attractions:["林家花園","府中商圈"]},
+            {id:"BL05",name:"亞東醫院",attractions:["遠東通訊園區"]},
+            {id:"BL04",name:"海山",attractions:["新北市立土城醫院"]},
+            {id:"BL03",name:"土城",attractions:["土城桐花公園"]},
+            {id:"BL02",name:"永寧",attractions:["承天禪寺"]},
+            {id:"BL01",name:"頂埔",attractions:["頂埔科技園區"]}
+        ]
+    },
+    yellow: { // 環狀線
+        name: "環狀線", color: "#FFD700", storageKey: "circularLineMapData",
+        stations: [
+            {id:"Y20",name:"新北產業園區",attractions:["機場捷運站"]},
+            {id:"Y19",name:"幸福",attractions:[]},
+            {id:"Y18",name:"頭前庄",attractions:["新莊廟街"]},
+            {id:"Y17",name:"新埔民生",attractions:[]},
+            {id:"Y16",name:"板橋",attractions:["新北市政府"]},
+            {id:"Y15",name:"板新",attractions:[]},
+            {id:"Y14",name:"中原",attractions:[]},
+            {id:"Y13",name:"橋和",attractions:[]},
+            {id:"Y12",name:"中和",attractions:["烘爐地南山福德宮"]},
+            {id:"Y11",name:"景安",attractions:[]},
+            {id:"Y10",name:"景平",attractions:[]},
+            {id:"Y09",name:"秀朗橋",attractions:[]},
+            {id:"Y08",name:"十四張",attractions:["國家人權博物館"]},
+            {id:"Y07",name:"大坪林",attractions:["景美河濱公園"]}
+        ]
+    }
+};
+
+// 分頁順序與顯示名稱（中和新蘆線(迴龍)、中和新蘆線(蘆洲)放在最前面）
+const lineOrder = [
+    { key: "orangeHuilong", display: "中和新蘆線(迴龍)" },
+    { key: "orangeLuzhou",  display: "中和新蘆線(蘆洲)" },
+    { key: "red",           display: "淡水信義線" },
+    { key: "brown",         display: "文湖線" },
+    { key: "green",         display: "松山新店線" },
+    { key: "blue",          display: "板南線" },
+    { key: "yellow",        display: "環狀線" }
+];
+
+let currentLine = null;
+let isAdmin = false;
+let currentStationId = null;
+
+// ==================== 初始化 ====================
+document.addEventListener('DOMContentLoaded', () => {
+    createTabs();
+    document.querySelector('.tab').click(); // 預設開「中和新蘆線(迴龍)」
+    setupGlobalEventListeners();
+});
+
+function createTabs() {
+    const container = document.getElementById('tabs');
+    container.innerHTML = '';
+    lineOrder.forEach(item => {
+        const line = lines[item.key];
+        const tab = document.createElement('div');
+        tab.className = `tab ${getColorClass(line.color)}`;
+        tab.textContent = item.display;
+        tab.dataset.key = item.key;
+        tab.onclick = () => switchLine(item.key);
+        container.appendChild(tab);
+    });
+}
+
+function getColorClass(c) {
+    const map = { "#f8b61c":"orange", "#e41c1c":"red", "#8B4513":"brown", "#008000":"green", "#007bff":"blue", "#FFD700":"yellow" };
+    return map[c] || "";
+}
+
+// ==================== 切換線路 ====================
+function switchLine(key) {
+    currentLine = lines[key];
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.tab[data-key="${key}"]`).classList.add('active');
+
+    document.getElementById('line-title').textContent = currentLine.name;
+    document.getElementById('line-title').style.color = currentLine.color;
+
+    const sidebar = document.getElementById('sidebar');
+    sidebar.style.borderColor = currentLine.color;
+    sidebar.querySelectorAll('h2, p').forEach(e => e.style.color = currentLine.color);
+    document.getElementById('login-btn').style.background = currentLine.color;
+    if (currentLine.color === "#FFD700") document.getElementById('login-btn').style.color = "#333";
+    document.getElementById('add-attraction-btn').style.background = currentLine.color;
+    if (currentLine.color === "#FFD700") document.getElementById('add-attraction-btn').style.color = "#333";
+
+    loadDataAndDraw();
+}
+
+function loadDataAndDraw() {
+    const saved = localStorage.getItem(currentLine.storageKey);
+    if (saved) currentLine.stations = JSON.parse(saved);
+    drawMap();
+    clearInfoPanel();
+}
+
+function clearInfoPanel() {
+    currentStationId = null;
+    document.getElementById('info-panel-content').innerHTML = '<h2>附近景點</h2><p>請點選站點</p><ul></ul>';
+    document.getElementById('add-attraction-form').style.display = 'none';
+}
+
+// ==================== 繪製地圖 ====================
+function drawMap() {
+    const svg = document.getElementById('line-svg');
+    svg.innerHTML = '';
+    const spacing = currentLine.stations.length > 25 ? 60 : 80;
+    const w = currentLine.stations.length * spacing + 100;
+    svg.setAttribute("width", w);
+    svg.setAttribute("height", "150");
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", 40); line.setAttribute("y1", 75);
+    line.setAttribute("x2", w-40); line.setAttribute("y2", 75);
+    line.setAttribute("stroke", currentLine.color);
+    line.setAttribute("stroke-width", 8);
+    svg.appendChild(line);
+
+    currentLine.stations.forEach((s,i) => {
+        const x = i * spacing + 40;
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("class","station-circle"); c.setAttribute("cx",x); c.setAttribute("cy",75); c.setAttribute("r",10);
+        c.setAttribute("stroke", currentLine.color);
+        c.onclick = () => showStationInfo(s.id);
+        svg.appendChild(c);
+
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x",x); t.setAttribute("y",110); t.setAttribute("class","station-text");
+        t.textContent = s.name;
+        svg.appendChild(t);
+    });
+}
+
+// ==================== 站點資訊 ====================
+function showStationInfo(id) {
+    currentStationId = id;
+    const st = currentLine.stations.find(s=>s.id===id);
+    const panel = document.getElementById('info-panel-content');
+    panel.innerHTML = `<h2>${st.name}</h2><p>(${st.id})</p><ul></ul>`;
+    const ul = panel.querySelector('ul');
+
+    if (st.attractions && st.attractions.length) {
+        st.attractions.forEach(a => {
+            const li = document.createElement('li');
+            li.textContent = a;
+            if (isAdmin) {
+                const del = document.createElement('button');
+                del.textContent = '刪除'; del.className = 'delete-btn';
+                del.onclick = () => deleteAttraction(a);
+                li.appendChild(del);
+            }
+            ul.appendChild(li);
+        });
+    } else {
+        ul.innerHTML = '<li>尚無景點資訊</li>';
+    }
+    document.getElementById('add-attraction-form').style.display = isAdmin ? 'flex' : 'none';
+}
+
+// ==================== 管理員功能 ====================
+function setupGlobalEventListeners() {
+    document.getElementById('login-btn').onclick = () => {
+        if (prompt('請輸入管理員密碼：') === '123') {
+            isAdmin = true;
+            toggleAdminUI(true);
+            if (currentStationId) showStationInfo(currentStationId);
+        } else alert('密碼錯誤！');
+    };
+    document.getElementById('logout-btn').onclick = () => {
+        isAdmin = false;
+        toggleAdminUI(false);
+        if (currentStationId) showStationInfo(currentStationId);
+    };
+    document.getElementById('add-attraction-btn').onclick = addAttraction;
+}
+
+function toggleAdminUI(on) {
+    document.getElementById('login-btn').style.display = on ? 'none' : 'block';
+    document.getElementById('logout-btn').style.display = on ? 'block' : 'none';
+    document.getElementById('admin-status').style.display = on ? 'block' : 'none';
+    document.getElementById('add-attraction-form').style.display = (on && currentStationId) ? 'flex' : 'none';
+}
+
+function addAttraction() {
+    const val = document.getElementById('add-attraction-input').value.trim();
+    if (!val || !currentStationId) return;
+    const st = currentLine.stations.find(s=>s.id===currentStationId);
+    if (!st.attractions) st.attractions = [];
+    st.attractions.push(val);
+    saveCurrentLine();
+    showStationInfo(currentStationId);
+    document.getElementById('add-attraction-input').value = '';
+}
+
+function deleteAttraction(name) {
+    const st = currentLine.stations.find(s=>s.id===currentStationId);
+    st.attractions = st.attractions.filter(a => a !== name);
+    saveCurrentLine();
+    showStationInfo(currentStationId);
+}
+
+function saveCurrentLine() {
+    localStorage.setItem(currentLine.storageKey, JSON.stringify(currentLine.stations));
+}
+</script>
+</body>
+</html>
